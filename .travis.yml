@@ -1,0 +1,15 @@
+language: clojure
+lein: lein2
+
+script: lein2 ci
+
+jdk:
+  - openjdk7
+
+services:
+  - redis-server
+
+notifications:
+  email: false
+  webhooks:
+    - https://listora.slack.com/services/hooks/travis?token=Htrjn3atr5L55ynrryLsf7dF
