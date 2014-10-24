@@ -1,134 +1,118 @@
 (ns congestion.middleware-test
-  (:require [clojure.test :refer :all]
+  (:require [clj-time.coerce :as c]
+            [clojure.test :refer :all]
+            [congestion.limits :as l]
             [congestion.middleware :refer :all]
-            [ring.mock.request :as mock]))
+            [congestion.storage :as s]))
 
 (def response
   {:status 200
    :headers {"Content-Type" "text/plain"}
    :body "Hello, world!"})
 
-(def stacked-response
-  {:status 200
-   :headers {"Content-Type" "text/plain"
-             "X-RateLimit-Limit" "999"
-             "X-RateLimit-Remaining" "900"}
-   :body "Hello, world!"
-   :congestion.middleware/rate-limit-applied true})
+(defrecord MockStorage [counters timeouts]
+  s/Storage
+  (get-count [self key]
+    (get @counters key 0))
+  (increment-count [self key timeout]
+    (swap! counters update-in [key] (fnil inc 0))
+    (swap! timeouts assoc key timeout))
+  (counter-expiry [self key]
+    (get @timeouts key)))
 
-(def exhausted-stacked-response
-  {:status 429
-   :headers {"Content-Type" "text/plain"
-             "Retry-After" "tomorrow"
-             "X-RateLimit-Limit" "999"
-             "X-RateLimit-Remaining" "0"}
-   :body "Too many requests"
-   :congestion.middleware/rate-limit-applied true})
+(defrecord MockRateLimit [quota key period]
+  l/RateLimit
+  (get-quota [self]
+    quota)
+  (get-key [self req]
+    key)
+  (get-period [self]
+    period))
 
 (defn rate-limit [rsp] (get-in rsp [:headers "X-RateLimit-Limit"]))
 (defn remaining [rsp] (get-in rsp [:headers "X-RateLimit-Remaining"]))
 (defn retry-after [rsp] (get-in rsp [:headers "Retry-After"]))
 
-(deftest test-wrap-rate-limit
+(deftest ^:unit test-wrap-rate-limit
   (testing "single wrap-rate-limit"
-    (testing "with unexhausted limit"
-      (let [counter-state {:rate-limit-exhausted? false
-                           :remaining-requests 1
-                           :quota 10}
+    (testing "with unexhausted quota"
+      (let [storage (->MockStorage (atom {}) (atom {}))
+            limit (->MockRateLimit 10 :mock-limit-key :mock-ttl)
             handler (-> response
                         constantly
-                        (wrap-rate-limit :mock-storage :mock-limit))]
-        (with-redefs [read-counter (fn [storage limit req]
-                                     (is (= storage :mock-storage))
-                                     (is (= limit :mock-limit))
-                                     (is (= req :mock-req))
-                                     counter-state)
-                      increment-counter (fn [storage limit req]
-                                          (is (= storage :mock-storage))
-                                          (is (= limit :mock-limit)))]
-          (let [rsp (handler :mock-req)]
-            (is (= (:status rsp) 200))
-            (is (= (rate-limit rsp) "10"))
-            (is (= (remaining rsp) "1"))))))
+                        (wrap-rate-limit storage limit))]
+        (let [rsp (handler :mock-req)]
+          (is (= (:status rsp) 200))
+          (is (= (:body "Hello, world!")))
+          (is (= (get-in rsp [:headers "Content-Type"] "text/plain")))
+          (is (= (rate-limit rsp) "10"))
+          (is (= (remaining rsp) "9"))
+          (is (= (s/get-count storage :mock-limit-key) 1))
+          (is (= (s/counter-expiry storage :mock-limit-key) :mock-ttl)))))
 
     (testing "with exhausted limit"
-      (let [counter-state {:rate-limit-exhausted? true
-                           :remaining-requests 0
-                           :quota 10
-                           :retry-after "next week"}
+      (let [counter-expiry (c/from-date #inst "2014-12-31T12:34:56Z")
+            storage (->MockStorage (atom {:mock-limit-key 10})
+                                   (atom {:mock-limit-key counter-expiry}))
+            limit (->MockRateLimit 10 :mock-limit-key :mock-ttl)
             handler (-> response
                         constantly
-                        (wrap-rate-limit :mock-storage :mock-limit))]
-        (with-redefs [read-counter (fn [storage limit req]
-                                     (is (= storage :mock-storage))
-                                     (is (= limit :mock-limit))
-                                     (is (= req :mock-req))
-                                     counter-state)
-                      increment-counter (fn [_ _ _]
-                                          (is false "should not be called"))]
-          (let [rsp (handler :mock-req)]
-            (is (= (:status rsp) 429))
-            (is (= (retry-after rsp) "next week"))
-            (is (= (rate-limit rsp) "10"))
-            (is (= (remaining rsp) "0")))))))
+                        (wrap-rate-limit storage limit))]
+        (let [rsp (handler :mock-req)]
+          (is (= (:status rsp) 429))
+          (is (= (rate-limit rsp) "10"))
+          (is (= (remaining rsp) "0"))
+          (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT"))
+          (is (= (s/get-count storage :mock-limit-key) 10))))))
 
   (testing "stacked wrap-rate-limit middlewares"
     (testing "with second limit applied"
-      (let [counter-state {:rate-limit-exhausted? false
-                           :remaining-requests 1
-                           :quota 10}
-            handler (-> stacked-response
+      (let [storage (->MockStorage (atom {}) (atom {}))
+            first-limit (->MockRateLimit 1000 :first-limit-key :first-ttl)
+            second-limit (->MockRateLimit 10 :second-limit-key :second-ttl)
+            handler (-> response
                         constantly
-                        (wrap-rate-limit :mock-storage :mock-limit))]
-        (with-redefs [read-counter (fn [storage limit req]
-                                     (is (= storage :mock-storage))
-                                     (is (= limit :mock-limit))
-                                     (is (= req :mock-req))
-                                     counter-state)
-                      increment-counter (fn [_ _ _]
-                                          (is false "should not be called"))]
-          (let [rsp (handler :mock-req)]
-            (is (= (:status rsp) 200))
-            (is (= (rate-limit rsp) "999"))
-            (is (= (remaining rsp) "900"))))))
-
-    (testing "with exhausted second rate limit"
-      (let [counter-state {:rate-limit-exhausted? false
-                           :remaining-requests 1
-                           :quota 10}
-            handler (-> exhausted-stacked-response
-                        constantly
-                        (wrap-rate-limit :mock-storage :mock-limit))]
-        (with-redefs [read-counter (fn [storage limit req]
-                                     (is (= storage :mock-storage))
-                                     (is (= limit :mock-limit))
-                                     (is (= req :mock-req))
-                                     counter-state)
-                      increment-counter (fn [_ _ _]
-                                          (is false "should not be called"))]
-          (let [rsp (handler :mock-req)]
-            (is (= (:status rsp) 429))
-            (is (= (retry-after rsp) "tomorrow"))
-            (is (= (rate-limit rsp) "999"))
-            (is (= (remaining rsp) "0"))))))
+                        (wrap-rate-limit storage first-limit)
+                        (wrap-rate-limit storage second-limit))]
+        (let [rsp (handler :mock-req)]
+          (is (= (:status rsp) 200))
+          (is (= (rate-limit rsp) "1000"))
+          (is (= (remaining rsp) "999"))
+          (is (= (s/get-count storage :first-limit-key) 1))
+          (is (= (s/counter-expiry storage :first-limit-key) :first-ttl)))))
 
     (testing "with exhausted first rate limit"
-      (let [counter-state {:rate-limit-exhausted? true
-                           :remaining-requests 0
-                           :quota 10
-                           :retry-after "next week"}
-            handler (-> exhausted-stacked-response
+      (let [counter-expiry (c/from-date #inst "2014-12-31T12:34:56Z")
+            storage (->MockStorage (atom {:first-limit-key 1000})
+                                   (atom {:first-limit-key counter-expiry}))
+            first-limit (->MockRateLimit 1000 :first-limit-key :first-ttl)
+            second-limit (->MockRateLimit 10 :second-limit-key :second-ttl)
+            handler (-> response
                         constantly
-                        (wrap-rate-limit :mock-storage :mock-limit))]
-        (with-redefs [read-counter (fn [storage limit req]
-                                     (is (= storage :mock-storage))
-                                     (is (= limit :mock-limit))
-                                     (is (= req :mock-req))
-                                     counter-state)
-                      increment-counter (fn [_ _ _]
-                                          (is false "should not be called"))]
-          (let [rsp (handler :mock-req)]
-            (is (= (:status rsp) 429))
-            (is (= (retry-after rsp) "next week"))
-            (is (= (rate-limit rsp) "10"))
-            (is (= (remaining rsp) "0"))))))))
+                        (wrap-rate-limit storage first-limit)
+                        (wrap-rate-limit storage second-limit))]
+        (let [rsp (handler :mock-req)]
+          (is (= (:status rsp) 429))
+          (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT"))
+          (is (= (rate-limit rsp) "1000"))
+          (is (= (remaining rsp) "0"))
+          (is (= (s/get-count storage :first-limit-key) 1000))
+          (is (= (s/get-count storage :second-limit-key) 0)))))
+
+    (testing "with exhausted second rate limit"
+      (let [counter-expiry (c/from-date #inst "2014-12-31T12:34:56Z")
+            storage (->MockStorage (atom {:second-limit-key 10})
+                                   (atom {:second-limit-key counter-expiry}))
+            first-limit (->MockRateLimit 1000 :first-limit-key :first-ttl)
+            second-limit (->MockRateLimit 10 :second-limit-key :second-ttl)
+            handler (-> response
+                        constantly
+                        (wrap-rate-limit storage first-limit)
+                        (wrap-rate-limit storage second-limit))]
+        (let [rsp (handler :mock-req)]
+          (is (= (:status rsp) 429))
+          (is (= (rate-limit rsp) "10"))
+          (is (= (remaining rsp) "0"))
+          (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT"))
+          (is (= (s/get-count storage :first-limit-key) 0))
+          (is (= (s/get-count storage :second-limit-key) 10)))))))

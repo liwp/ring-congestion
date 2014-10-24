@@ -9,7 +9,7 @@
         period (l/get-period limit)
         quota (l/get-quota limit)
         current-count (s/get-count storage key)
-        remaining-requests (- quota current-count)]
+        remaining-requests (- quota current-count 1)]
     (if (neg? remaining-requests)
       {:key key
        :period period
