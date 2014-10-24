@@ -2,7 +2,8 @@
   :description "Rate limiting ring middleware"
   :url "https://github.com/listora/ring-congestion"
   :license {:distribution :manual}
-  :dependencies [[com.taoensso/carmine "2.7.1" :exclusions [org.clojure/clojure]]
+  :dependencies [[clj-time "0.8.0" :exclusions [org.clojure/clojure]]
+                 [com.taoensso/carmine "2.7.1" :exclusions [org.clojure/clojure]]
                  [org.clojure/clojure "1.6.0"]]
   :profiles {:dev {:dependencies [[ring/ring-core "1.3.1"]
                                   [ring-mock "0.1.5"]

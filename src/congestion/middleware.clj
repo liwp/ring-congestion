@@ -1,29 +1,7 @@
 (ns congestion.middleware
   (:require [congestion.limits :as l]
+            [congestion.responses :as r]
             [congestion.storage :as s]))
-
-(defn- rate-limit-applied?
-  [rsp]
-  (-> rsp
-      ::rate-limit-applied
-      true?))
-
-(defn- rate-limit-response
-  [rsp state]
-  (let [headers {"X-RateLimit-Limit" (str (:quota state))
-                 "X-RateLimit-Remaining" (str (:remaining-requests state))}]
-    (-> rsp
-        (update-in [:headers] merge headers)
-        (assoc ::rate-limit-applied true))))
-
-(defn- too-many-requests-response
-  [state]
-  (-> {:status 429
-       :headers
-       {"Content-Type" "application/json"
-        "Retry-After" (str (:retry-after state))} ;; TODO: render to string
-       :body "{\"error\": \"Too Many Requests\"}"}
-      (rate-limit-response state)))
 
 (defn read-counter
   [storage limit req]
@@ -56,10 +34,10 @@
   (fn [req]
     (let [counter-state (read-counter storage limit req)]
       (if (:rate-limit-exhausted? counter-state)
-        (too-many-requests-response counter-state)
+        (r/too-many-requests-response counter-state)
         (let [rsp (handler req)]
-          (if (rate-limit-applied? rsp)
+          (if (r/rate-limit-applied? rsp)
             rsp
             (do
-              (increment-counter storage limit req)
-              (rate-limit-response rsp counter-state))))))))
+              (increment-counter storage counter-state)
+              (r/rate-limit-response rsp counter-state))))))))
