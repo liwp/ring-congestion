@@ -1,50 +1,56 @@
 (ns congestion.storage-test
   (:require [clj-time.core :as t]
-            [congestion.storage :refer :all]
-            [clojure.test :refer :all]))
+            [clojure.test :refer :all]
+            [congestion.storage :refer :all]))
 
-(deftest ^:unit test-local-storage
-  (testing "local-storage"
-    (let [state (atom {})
-          storage (->LocalStorage state)
-          now (t/now)]
+(def ^:dynamic *storage* nil)
 
-      (testing "is initially empty"
-        (is (empty? (:counters @state)))
-        (is (empty? (:timeouts @state))))
+(defn with-storage
+  [f]
+  (binding [*storage* (->LocalStorage (atom {}))]
+    (f)
+    (clear-counters *storage*)))
 
-      (testing "increments counters"
-        (with-redefs [t/now (fn [] now)]
-          (doseq [k [:increments-counters-b
-                     :increments-counters-a
-                     :increments-counters-a
-                     :increments-counters-b
-                     :increments-counters-b]]
-            (increment-count storage k (t/seconds 0))))
-        (is (= (:counters @state) {:increments-counters-a 2
-                                   :increments-counters-b 3}))
-        (is (= (:timeouts @state) {:increments-counters-a now
-                                   :increments-counters-b now})))
+(use-fixtures :each with-storage)
 
-      (testing "expires counters"
-        (with-redefs [t/now (fn [] now)]
-          (increment-count storage :expiring-counters-a (t/seconds 10))
-          (increment-count storage :expiring-counters-b (t/minutes 10)))
+(deftest ^:redis test-increments-counters
+  (doseq [k [:increments-counters-b
+             :increments-counters-a
+             :increments-counters-a
+             :increments-counters-b
+             :increments-counters-b
+             :increments-counters-c]]
+    (increment-count *storage* k (t/seconds 10)))
 
-        (with-redefs [t/now (fn [] (t/plus now (t/seconds 11)))]
-          (is (= (get-count storage :expiring-counters-a) 0))
-          (is (= (get-count storage :expiring-counters-b) 1))
-          (is (= (:counters @state)
-                 {:expiring-counters-b 1}))
-          (is (= (:timeouts @state)
-                 {:expiring-counters-b (t/plus now (t/minutes 10))}))))
+  (is (= (get-count *storage* :increments-counters-a) 2))
+  (is (= (get-count *storage* :increments-counters-b) 3))
+  (is (= (get-count *storage* :increments-counters-c) 1))
+  (is (= (get-count *storage* :increments-counters-d) 0)))
 
-      (testing "returns expiration times"
-        (with-redefs [t/now (fn [] now)]
-          (increment-count storage :expiration-time-a (t/seconds 10))
-          (increment-count storage :expiration-time-b (t/minutes 10)))
+(deftest ^:redis test-clears-counters
+  (increment-count *storage* :clears-counters-a (t/seconds 10))
+  (increment-count *storage* :clears-counters-b (t/minutes 10))
 
-        (is (= (counter-expiry storage :expiration-time-a)
-               (t/plus now (t/seconds 10))))
-        (is (= (counter-expiry storage :expiration-time-b)
-               (t/plus now (t/minutes 10))))))))
+  (clear-counters *storage*)
+  (is (= (get-count *storage* :clears-counters-a) 0))
+  (is (= (get-count *storage* :clears-counters-b) 0)))
+
+(deftest ^:redis test-expires-counters
+  (increment-count *storage* :expiring-counters-a (t/seconds 1))
+  (increment-count *storage* :expiring-counters-b (t/minutes 10))
+
+  (Thread/sleep 1100)
+
+  (is (= (get-count *storage* :expiring-counters-a) 0))
+  (is (= (get-count *storage* :expiring-counters-b) 1)))
+
+(deftest ^:redis test-returns-expiration-time
+  (let [now (t/now)]
+    (with-redefs [t/now (fn [] now)]
+      (increment-count *storage* :expiration-time-a (t/seconds 10))
+      (increment-count *storage* :expiration-time-b (t/minutes 10)))
+
+    (is (not (t/after? (t/plus now (t/seconds 10))
+                       (counter-expiry *storage* :expiration-time-a))))
+    (is (not (t/after? (t/plus now (t/minutes 10))
+                       (counter-expiry *storage* :expiration-time-b))))))

@@ -16,7 +16,8 @@
 
   (get-count [self key])
   (increment-count [self key ttl])
-  (counter-expiry [self key]))
+  (counter-expiry [self key])
+  (clear-counters [self]))
 
 (defn- expired-keys
   [m now]
@@ -59,7 +60,10 @@
     nil)
 
   (counter-expiry [self key]
-    (get-in @state [:timeouts key])))
+    (get-in @state [:timeouts key]))
+
+  (clear-counters [self]
+    (reset! state {})))
 
 (defn local-storage
   []
