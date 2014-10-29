@@ -44,7 +44,7 @@
        :body body}))
 
   ([counter-state rsp]
-     (-> rsp
-         (assoc :status 429)
-         (add-retry-after-header counter-state)
-         (rate-limit-response counter-state))))
+     (let [rsp (-> rsp
+                   (add-retry-after-header counter-state)
+                   (rate-limit-response counter-state))]
+       (merge {:status 429} rsp))))
