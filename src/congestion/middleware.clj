@@ -6,8 +6,8 @@
 (defn- read-counter
   [storage limit req]
   (if-let [key (l/get-key limit req)]
-    (let [period (l/get-period limit)
-          quota (l/get-quota limit)
+    (let [period (l/get-period limit req)
+          quota (l/get-quota limit req)
           current-count (s/get-count storage key)
           remaining-requests (- quota current-count 1)]
       (if (neg? remaining-requests)

@@ -18,11 +18,11 @@
 
 (defrecord MockRateLimit [quota key period]
   l/RateLimit
-  (get-quota [self]
+  (get-quota [self req]
     quota)
   (get-key [self req]
     key)
-  (get-period [self]
+  (get-period [self req]
     period))
 
 (def ^:dynamic *storage* nil)

@@ -17,13 +17,13 @@
 
 (defn retry-after [rsp] (get-in rsp [:headers "Retry-After"]))
 
-(defrecord MethodRateLimit [method period quota]
+(defrecord MethodRateLimit [methods period quota]
   l/RateLimit
-  (get-quota [self]
+  (get-quota [self req]
     quota)
   (get-key [self req]
     (let [req-method (:request-method req)]
-      (if (= req-method method)
+      (if (contains? methods req-method)
         (str ::method "-" (-> req :request-method name)))))
-  (get-period [self]
+  (get-period [self req]
     period))

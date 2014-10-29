@@ -165,7 +165,7 @@
             first-limit (ip-rate-limit (t/seconds 10) 10)
             first-config {:storage storage
                           :limit first-limit}
-            second-limit (->MethodRateLimit :get (t/seconds 10) 100)
+            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 100)
             second-config {:storage storage
                           :limit second-limit}
             handler (-> default-response-handler
@@ -183,7 +183,7 @@
             first-limit (ip-rate-limit (t/seconds 10) 1)
             first-config {:storage storage
                           :limit first-limit}
-            second-limit (->MethodRateLimit :get (t/seconds 10) 100)
+            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 100)
             second-config {:storage storage
                            :limit second-limit}
             handler (-> default-response-handler
@@ -208,7 +208,7 @@
             first-config {:storage storage
                           :limit first-limit
                           :label "first"}
-            second-limit (->MethodRateLimit :get (t/seconds 10) 1)
+            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 1)
             second-config {:storage storage
                            :limit second-limit
                            :label "second"}
@@ -232,7 +232,7 @@
             first-config {:storage storage
                           :limit first-limit
                           :label "first"}
-            second-limit (->MethodRateLimit :get (t/seconds 10) 100)
+            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 100)
             second-config {:storage storage
                            :limit second-limit
                            :label "second"}
@@ -261,7 +261,7 @@
             first-config {:storage storage
                           :limit first-limit
                           :label "first"}
-            second-limit (->MethodRateLimit :get (t/seconds 10) 1)
+            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 1)
             second-config {:storage storage
                            :limit second-limit
                            :label "second"}
