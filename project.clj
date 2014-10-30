@@ -20,4 +20,9 @@
                    :eastwood {:exclude-linters [:deprecations :unused-ret-vals]}
 
                    :aliases {"ci" ["do" ["test"] ["lint"]]
-                             "lint" ["do" ["whitespace-linter"] ["eastwood"]]}}})
+                             "lint" ["do" ["whitespace-linter"] ["eastwood"]]}}}
+
+  :test-selectors {:default (complement :redis)
+                   :redis :redis
+                   :unit :unit
+                   :all (fn [_] true)})
