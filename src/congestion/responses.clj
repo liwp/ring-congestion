@@ -12,7 +12,7 @@
   [rsp]
   (-> rsp
       ::rate-limit-applied
-      true?))
+      some?))
 
 (defn rate-limit-response
   [rsp counter-state]
@@ -22,7 +22,7 @@
                  (str (:remaining-requests counter-state))}]
     (-> rsp
         (update-in [:headers] merge headers)
-        (assoc ::rate-limit-applied true))))
+        (assoc ::rate-limit-applied (:key counter-state)))))
 
 (defn add-retry-after-header
   [rsp counter-state]

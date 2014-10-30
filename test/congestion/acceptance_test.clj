@@ -1,6 +1,7 @@
 (ns congestion.acceptance-test
   (:require [clj-time.core :as t]
             [clojure.test :refer :all]
+            [compojure.core :refer :all]
             [congestion.middleware :refer :all]
             [congestion.storage :as s]
             [congestion.redis-storage :as redis]
@@ -18,266 +19,256 @@
     :headers {"Content-Type" "text/plain"}
     :body "I'm a teapot"}))
 
+(def storage-factory-fns
+  "A collection of functions used to instantiate the various storage
+  backends."
+  [s/local-storage
+   #(redis/redis-storage {:spec {:host "localhost"
+                                 :port 6379}})])
+
 (defn create-storage
   [factory-fn]
-  (let [storage (factory-fn)]
-    (s/clear-counters storage)
-    storage))
+  (doto (factory-fn)
+    s/clear-counters))
 
 (deftest ^:redis test-unstacked-rate-limit
-  (doseq [storage-factory-fn [s/local-storage
-                              #(redis/redis-storage {:spec {:host "localhost"
-                                                            :port 6379}})]]
-    (testing "with available quota"
-      (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit (t/seconds 10) 10)
-            config {:storage storage
-                    :limit limit}
-            handler (wrap-rate-limit default-response-handler config)
-            rsp (handler (mock/request :get "/"))]
-
-        (is (= (:status rsp) 200))
-        (is (= (rate-limit rsp) 10))
-        (is (= (remaining rsp) 9))))
-
-    (testing "with exhausted quota"
-      (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit (t/seconds 10) 1)
-            config {:storage storage
-                    :limit limit}
-            handler (wrap-rate-limit default-response-handler config)
-            rsp-a (handler (mock/request :get "/"))
-            rsp-b (handler (mock/request :get "/"))]
-
-        (is (= (:status rsp-a) 200))
-        (is (= (:status rsp-b) 429))
-        (is (= (rate-limit rsp-b) 1))
-        (is (= (remaining rsp-b) 0))
-        (is (some? (retry-after rsp-b)))))
-
-    (testing "with replenished quota"
+  (testing "wrap-rate-limit"
+    (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
             limit (ip-rate-limit (t/seconds 1) 1)
-            config {:storage storage
-                    :limit limit}
-            handler (wrap-rate-limit default-response-handler config)
-            rsp-a (handler (mock/request :get "/"))
-            rsp-b (handler (mock/request :get "/"))]
+            response-builder (fn [counter-state]
+                               (too-many-requests-response
+                                counter-state
+                                "text/plain"
+                                "custom-error"))
+            rate-limit-config {:storage storage
+                               :limit limit
+                               :response-builder response-builder}
+            app (routes
+                 (GET "/no-limit" [] "no-limit")
+                 (wrap-rate-limit
+                  (GET "/limit" [] "limit")
+                  rate-limit-config))]
 
-        (is (= (:status rsp-a) 200))
-        (is (= (:status rsp-b) 429))
+        (testing "unlimited route"
+          (let [rsp (app (mock/request :get "/no-limit"))]
+            (is (= (:status rsp) 200))
+            (is (= (rate-limit rsp) nil))
+            (is (= (remaining rsp) nil))
+            (is (nil? (retry-after rsp)))
+            (is (= (:body rsp) "no-limit"))
+            (is (nil? (:congestion.responses/rate-limit-applied rsp)))))
 
-        ;; Allow the counter to expire
-        (Thread/sleep 1100)
+        (testing "rate-limited route"
+          (let [rsp (app (mock/request :get "/limit"))]
+            (is (= (:status rsp) 200))
+            (is (= (rate-limit rsp) 1))
+            (is (= (remaining rsp) 0))
+            (is (nil? (retry-after rsp)))
+            (is (= (:body rsp) "limit"))
+            (is (= (:congestion.responses/rate-limit-applied rsp)
+                   ":congestion.limits/ip-localhost")))
 
-        (let [rsp-c (handler (mock/request :get "/"))]
-          (is (= (:status rsp-a) 200)))))
+          (testing "exhausted quota"
+            (let [rsp (app (mock/request :get "/limit"))]
+              (is (= (:status rsp) 429))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (some? (retry-after rsp)))
+              (is (= (:body rsp) "custom-error"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.limits/ip-localhost"))))
 
-    (testing "with custom response"
-      (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit (t/seconds 10) 1)
-            config {:storage storage
-                    :limit limit
-                    :response-builder custom-response-builder}
-            handler (wrap-rate-limit default-response-handler config)
-            rsp-a (handler (mock/request :get "/"))
-            rsp-b (handler (mock/request :get "/"))]
-
-        (is (= (:status rsp-a) 200))
-
-        (is (= (:status rsp-b) 418))
-        (is (= (rate-limit rsp-b) 1))
-        (is (= (remaining rsp-b) 0))
-        (is (some? (retry-after rsp-b)))))))
+          (testing "reset quota"
+            (Thread/sleep 1000)
+            (let [rsp (app (mock/request :get "/limit"))]
+              (is (= (:status rsp) 200))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (nil? (retry-after rsp)))
+              (is (= (:body rsp) "limit"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.limits/ip-localhost")))))))))
 
 (deftest ^:redis test-single-stacked-rate-limit
-  (doseq [storage-factory-fn [s/local-storage
-                              #(redis/redis-storage {:spec {:host "localhost"
-                                                            :port 6379}})]]
-    (testing "with available quota"
-      (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit (t/seconds 10) 10)
-            config {:storage storage
-                    :limit limit}
-            handler (wrap-stacking-rate-limit default-response-handler config)
-            rsp (handler (mock/request :get "/"))]
-
-        (is (= (:status rsp) 200))
-        (is (= (rate-limit rsp) 10))
-        (is (= (remaining rsp) 9))))
-
-    (testing "with exhausted quota"
-      (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit (t/seconds 10) 1)
-            config {:storage storage
-                    :limit limit}
-            handler (wrap-stacking-rate-limit default-response-handler config)
-            rsp-a (handler (mock/request :get "/"))
-            rsp-b (handler (mock/request :get "/"))]
-
-        (is (= (:status rsp-a) 200))
-        (is (= (:status rsp-b) 429))
-        (is (= (rate-limit rsp-b) 1))
-        (is (= (remaining rsp-b) 0))
-        (is (some? (retry-after rsp-b)))))
-
-    (testing "with replenished quota"
+  (testing "single wrap-stacking-rate-limit instance"
+    (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
             limit (ip-rate-limit (t/seconds 1) 1)
-            config {:storage storage
-                    :limit limit}
-            handler (wrap-stacking-rate-limit default-response-handler config)
-            rsp-a (handler (mock/request :get "/"))
-            rsp-b (handler (mock/request :get "/"))]
+            response-builder (fn [counter-state]
+                               (too-many-requests-response
+                                counter-state
+                                "text/plain"
+                                "custom-error"))
+            rate-limit-config {:storage storage
+                               :limit limit
+                               :response-builder response-builder}
+            app (routes
+                 (GET "/no-limit" [] "no-limit")
+                 (wrap-stacking-rate-limit
+                  (GET "/limit" [] "limit")
+                  rate-limit-config))]
 
-        (is (= (:status rsp-a) 200))
-        (is (= (:status rsp-b) 429))
+        (testing "unlimited route"
+          (let [rsp (app (mock/request :get "/no-limit"))]
+            (is (= (:status rsp) 200))
+            (is (= (rate-limit rsp) nil))
+            (is (= (remaining rsp) nil))
+            (is (nil? (retry-after rsp)))
+            (is (= (:body rsp) "no-limit"))
+            (is (nil? (:congestion.responses/rate-limit-applied rsp)))))
 
-        ;; Allow the counter to expire
-        (Thread/sleep 1100)
+        (testing "rate-limited route"
+          (let [rsp (app (mock/request :get "/limit"))]
+            (is (= (:status rsp) 200))
+            (is (= (rate-limit rsp) 1))
+            (is (= (remaining rsp) 0))
+            (is (nil? (retry-after rsp)))
+            (is (= (:body rsp) "limit"))
+            (is (= (:congestion.responses/rate-limit-applied rsp)
+                   ":congestion.limits/ip-localhost")))
 
-        (let [rsp-c (handler (mock/request :get "/"))]
-          (is (= (:status rsp-a) 200)))))
+          (testing "exhausted quota"
+            (let [rsp (app (mock/request :get "/limit"))]
+              (is (= (:status rsp) 429))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (some? (retry-after rsp)))
+              (is (= (:body rsp) "custom-error"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.limits/ip-localhost"))))
 
-    (testing "with custom response"
-      (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit (t/seconds 10) 1)
-            config {:storage storage
-                    :limit limit
-                    :response-builder custom-response-builder}
-            handler (wrap-stacking-rate-limit default-response-handler config)
-            rsp-a (handler (mock/request :get "/"))
-            rsp-b (handler (mock/request :get "/"))]
+          (testing "reset quota"
+            (Thread/sleep 1000)
+            (let [rsp (app (mock/request :get "/limit"))]
+              (is (= (:status rsp) 200))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (nil? (retry-after rsp)))
+              (is (= (:body rsp) "limit"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.limits/ip-localhost")))))))))
 
-        (is (= (:status rsp-a) 200))
-
-        (is (= (:status rsp-b) 418))
-        (is (= (rate-limit rsp-b) 1))
-        (is (= (remaining rsp-b) 0))
-        (is (some? (retry-after rsp-b)))))))
+(defn wrap-allowed-methods
+  "A trivial middleware that returns 405 for those HTTP method that
+  are no explicitly allowed. This middleware is used to demonstrate
+  how one might want to stack rate limiting middleware around other
+  middleware in order to apply different rate limits, eg before and
+  after authenticate."
+  [handler methods]
+  (fn [req]
+    (let [method (-> req :request-method)]
+      (if (contains? methods method)
+        (handler req)
+        {:status 405
+         :headers {"Content-Type" "text/plain"}
+         :body "Method not allowed"}))))
 
 (deftest ^:redis test-multiple-stacked-rate-limits
-  (doseq [storage-factory-fn [s/local-storage
-                              #(redis/redis-storage {:spec {:host "localhost"
-                                                            :port 6379}})]]
-    (testing "with available quota"
+  (testing "multiple wrap-stacking-rate-limit instance"
+    (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
-            first-limit (ip-rate-limit (t/seconds 10) 10)
+            first-limit (ip-rate-limit (t/seconds 1) 1)
             first-config {:storage storage
                           :limit first-limit}
-            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 100)
-            second-config {:storage storage
-                          :limit second-limit}
-            handler (-> default-response-handler
-                        (wrap-stacking-rate-limit first-config)
-                        (wrap-stacking-rate-limit second-config))
-            ;; allowed by first-limit and increments second-limit
-            rsp (handler (mock/request :get "/"))]
-
-        (is (= (:status rsp) 200))
-        (is (= (rate-limit rsp) 10))
-        (is (= (remaining rsp) 9))))
-
-    (testing "with exhausted first quota"
-      (let [storage (create-storage storage-factory-fn)
-            first-limit (ip-rate-limit (t/seconds 10) 1)
-            first-config {:storage storage
-                          :limit first-limit}
-            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 100)
-            second-config {:storage storage
-                           :limit second-limit}
-            handler (-> default-response-handler
-                        (wrap-stacking-rate-limit second-config)
-                        (wrap-stacking-rate-limit first-config))
-            ;; :post will not match second-limit, so we end up incrementing
-            ;; first-limit count
-            rsp-a (handler (mock/request :post "/"))
-            ;; :get would match second-limit, but first-limit (IP
-            ;; limit) is exhausted, so the request is denied
-            rsp-b (handler (mock/request :get "/"))]
-
-        (is (= (:status rsp-a) 200))
-        (is (= (:status rsp-b) 429))
-        (is (= (rate-limit rsp-b) 1))
-        (is (= (remaining rsp-b) 0))
-        (is (some? (retry-after rsp-b)))))
-
-    (testing "with exhausted second quota"
-      (let [storage (create-storage storage-factory-fn)
-            first-limit (ip-rate-limit (t/seconds 10) 100)
-            first-config {:storage storage
-                          :limit first-limit
-                          :label "first"}
-            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 1)
+            second-limit (->MethodRateLimit #{:get} (t/seconds 1) 1)
+            second-response-builder (fn [counter-state]
+                                      (too-many-requests-response
+                                       counter-state
+                                       "text/plain"
+                                       "custom-error"))
             second-config {:storage storage
                            :limit second-limit
-                           :label "second"}
-            handler (-> default-response-handler
-                        (wrap-stacking-rate-limit second-config)
-                        (wrap-stacking-rate-limit first-config))
-            ;; first req exhausts second-limit and the second req is
-            ;; denied
-            rsp-a (handler (mock/request :get "/"))
-            rsp-b (handler (mock/request :get "/"))]
+                           :response-builder second-response-builder}
+            wrap-middleware #(-> %
+                                 (wrap-stacking-rate-limit second-config)
+                                 (wrap-allowed-methods #{:get :post})
+                                 (wrap-stacking-rate-limit first-config))
 
-        (is (= (:status rsp-a) 200))
-        (is (= (:status rsp-b) 429))
-        (is (= (rate-limit rsp-b) 1))
-        (is (= (remaining rsp-b) 0))
-        (is (some? (retry-after rsp-b)))))
+            app (routes
+                 (GET "/no-limit" [] "no-limit")
+                 (wrap-middleware
+                  (ANY "/limit" [] "limit")))]
 
-    (testing "with replenished first quota"
-      (let [storage (create-storage storage-factory-fn)
-            first-limit (ip-rate-limit (t/seconds 10) 1)
-            first-config {:storage storage
-                          :limit first-limit
-                          :label "first"}
-            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 100)
-            second-config {:storage storage
-                           :limit second-limit
-                           :label "second"}
-            handler (-> default-response-handler
-                        (wrap-stacking-rate-limit second-config)
-                        (wrap-stacking-rate-limit first-config))
-            ;; :post will not match second-limit, so we end up incrementing
-            ;; first-limit count
-            rsp-a (handler (mock/request :post "/"))
-            ;; :get would match second-limit, but first-limit (IP
-            ;; limit) is exhausted, so the request is denied
-            rsp-b (handler (mock/request :get "/"))]
+        (testing "unlimited route"
+          (dotimes [_ 3] ;; go over both limits to show we're not limited
+            (let [rsp (app (mock/request :get "/no-limit"))]
+              (is (= (:status rsp) 200))
+              (is (= (rate-limit rsp) nil))
+              (is (= (remaining rsp) nil))
+              (is (nil? (retry-after rsp)))
+              (is (= (:body rsp) "no-limit"))
+              (is (nil? (:congestion.responses/rate-limit-applied rsp))))))
 
-        (is (= (:status rsp-a) 200))
-        (is (= (:status rsp-b) 429))
+        (testing "route limited by second limit (HTTP method)"
+          (testing "applies second limit (HTTP method)"
+            (let [rsp (app (mock/request :get "/limit"))]
+              (is (= (:status rsp) 200))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (nil? (retry-after rsp)))
+              (is (= (:body rsp) "limit"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.test-utils/method-get"))))
 
-        ;; Allow the counter to expire
-        (Thread/sleep 1100)
+          (testing "exhausted quota"
+            (let [rsp (app (mock/request :get "/limit"))]
+              (is (= (:status rsp) 429))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (some? (retry-after rsp)))
+              (is (= (:body rsp) "custom-error"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.test-utils/method-get"))))
 
-        (let [rsp-c (handler (mock/request :get "/"))]
-          (is (= (:status rsp-a) 200)))))
+          (testing "reset quota"
+            (Thread/sleep 1100)
+            (let [rsp (app (mock/request :get "/limit"))]
+              (is (= (:status rsp) 200))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (nil? (retry-after rsp)))
+              (is (= (:body rsp) "limit"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.test-utils/method-get")))))
 
-    (testing "with replenished second quota"
-      (let [storage (create-storage storage-factory-fn)
-            first-limit (ip-rate-limit (t/seconds 10) 100)
-            first-config {:storage storage
-                          :limit first-limit
-                          :label "first"}
-            second-limit (->MethodRateLimit #{:get} (t/seconds 10) 1)
-            second-config {:storage storage
-                           :limit second-limit
-                           :label "second"}
-            handler (-> default-response-handler
-                        (wrap-stacking-rate-limit second-config)
-                        (wrap-stacking-rate-limit first-config))
-            ;; first req exhausts second-limit and the second req is
-            ;; denied
-            rsp-a (handler (mock/request :get "/"))
-            rsp-b (handler (mock/request :get "/"))]
+        (testing "route limited by first limit (IP)"
+          (testing "available quota"
+            (let [rsp (app (mock/request :post "/limit"))]
+              (is (= (:status rsp) 200))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (nil? (retry-after rsp)))
+              (is (= (:body rsp) "limit"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.limits/ip-localhost"))))
 
-        (is (= (:status rsp-a) 200))
-        (is (= (:status rsp-b) 429))
+          (testing "exhausted quota"
+            (let [rsp (app (mock/request :post "/limit"))]
+              (is (= (:status rsp) 429))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (some? (retry-after rsp)))
+              (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.limits/ip-localhost")))
 
-        ;; Allow the counter to expire
-        (Thread/sleep 1100)
+            (let [rsp (app (mock/request :get "/limit"))]
+              (is (= (:status rsp) 429))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (some? (retry-after rsp)))
+              (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.limits/ip-localhost"))))
 
-        (let [rsp-c (handler (mock/request :get "/"))]
-          (is (= (:status rsp-a) 200)))))))
+          (testing "reset quota"
+            (Thread/sleep 1000)
+            (let [rsp (app (mock/request :post "/limit"))]
+              (is (= (:status rsp) 200))
+              (is (= (rate-limit rsp) 1))
+              (is (= (remaining rsp) 0))
+              (is (nil? (retry-after rsp)))
+              (is (= (:body rsp) "limit"))
+              (is (= (:congestion.responses/rate-limit-applied rsp)
+                     ":congestion.limits/ip-localhost")))))))))

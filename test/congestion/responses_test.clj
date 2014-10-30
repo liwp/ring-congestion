@@ -11,18 +11,19 @@
 (deftest ^:unit test-rate-limit-applied?
   (testing "rate-limit-applied?"
     (doseq [[rsp res] [[{} false]
-                       [{::r/rate-limit-applied true} true]
-                       [{::r/rate-limit-applied false} false]]]
+                       [{::r/rate-limit-applied "limit-key"} true]
+                       [{::r/rate-limit-applied nil} false]]]
       (testing (str "with " rsp)
         (is (= (r/rate-limit-applied? rsp) res))))))
 
 (deftest ^:unit test-rate-limit-response
   (testing "rate-limit-response"
-    (let [counter-state {:quota 10
+    (let [counter-state {:key "limit-key"
+                         :quota 10
                          :remaining-requests 5}
           rsp (r/rate-limit-response response counter-state)
           headers (:headers rsp)]
-      (is (true? (::r/rate-limit-applied rsp)))
+      (is (= (::r/rate-limit-applied rsp) "limit-key"))
       (is (= (:status rsp) 200))
       (is (= (:body rsp) "Hello, world!"))
       (is (= (headers "Content-Type") "text/plain"))
@@ -39,13 +40,14 @@
 
 (deftest ^:unit test-too-many-requests-response
   (testing "too-many-requests-response"
-    (let [counter-state {:quota 10
+    (let [counter-state {:key "limit-key"
+                         :quota 10
                          :remaining-requests 0
                          :retry-after
                          (c/from-date #inst "2014-12-31T12:34:56Z")}
           rsp (r/too-many-requests-response counter-state)
           headers (:headers rsp)]
-      (is (true? (::r/rate-limit-applied rsp)))
+      (is (= (::r/rate-limit-applied rsp) "limit-key"))
       (is (= (:status rsp) 429))
       (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
       (is (= (headers "Content-Type") "application/json"))
