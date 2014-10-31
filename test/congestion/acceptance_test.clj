@@ -35,7 +35,7 @@
   (testing "wrap-rate-limit"
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit (t/seconds 1) 1)
+            limit (ip-rate-limit 1 (t/seconds 1))
             response-builder (fn [& args]
                                (apply too-many-requests-response
                                       {:headers
@@ -95,7 +95,7 @@
   (testing "single wrap-stacking-rate-limit instance"
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit (t/seconds 1) 1)
+            limit (ip-rate-limit 1 (t/seconds 1))
             response-builder (partial too-many-requests-response
                                       {:headers
                                        {"Content-Type" "text/plain"}
@@ -168,7 +168,7 @@
   (testing "multiple wrap-stacking-rate-limit instance"
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
-            first-limit (ip-rate-limit (t/seconds 1) 1)
+            first-limit (ip-rate-limit 1 (t/seconds 1))
             first-config {:storage storage
                           :limit first-limit}
             second-limit (->MethodRateLimit #{:get} (t/seconds 1) 1)

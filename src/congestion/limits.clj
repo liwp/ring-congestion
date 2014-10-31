@@ -5,7 +5,7 @@
   (get-key [self req])
   (get-period [self req]))
 
-(defrecord IpRateLimit [period quota]
+(defrecord IpRateLimit [quota period]
   RateLimit
   (get-quota [self req]
     quota)

@@ -1,6 +1,11 @@
 (ns congestion.responses
   (:require [clj-time.format :as f]))
 
+(def default-response
+  "The default 429 response."
+  {:headers {"Content-Type" "application/json"}
+   :body "{\"error\": \"Too Many Requests\"}"})
+
 (def ^:private time-format (f/formatter "EEE, dd MMM yyyy HH:mm:ss"))
 
 (defn- time->str
@@ -30,9 +35,7 @@
 
 (defn too-many-requests-response
   ([key quota retry-after]
-     (let [rsp {:headers {"Content-Type" "application/json"}
-                :body "{\"error\": \"Too Many Requests\"}"}]
-       (too-many-requests-response rsp key quota retry-after)))
+     (too-many-requests-response default-response key quota retry-after))
 
   ([rsp key quota retry-after]
      (let [rsp (-> rsp

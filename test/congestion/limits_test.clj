@@ -5,7 +5,7 @@
 
 (deftest ^:unit test-ip-rate-limit
   (testing "IpRateLimit"
-    (let [limit (->IpRateLimit (t/seconds 10) 100)
+    (let [limit (->IpRateLimit 100 (t/seconds 10))
           req {:remote-addr "127.0.0.1"}]
       (is (= (get-quota limit req) 100))
       (is (= (get-key limit req) ":congestion.limits/ip-127.0.0.1"))
