@@ -36,11 +36,12 @@
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
             limit (ip-rate-limit (t/seconds 1) 1)
-            response-builder (fn [counter-state]
-                               (too-many-requests-response
-                                counter-state
-                                "text/plain"
-                                "custom-error"))
+            response-builder (fn [& args]
+                               (apply too-many-requests-response
+                                      {:headers
+                                       {"Content-Type" "text/plain"}
+                                       :body "custom-error"}
+                                      args))
             rate-limit-config {:storage storage
                                :limit limit
                                :response-builder response-builder}
@@ -95,11 +96,10 @@
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
             limit (ip-rate-limit (t/seconds 1) 1)
-            response-builder (fn [counter-state]
-                               (too-many-requests-response
-                                counter-state
-                                "text/plain"
-                                "custom-error"))
+            response-builder (partial too-many-requests-response
+                                      {:headers
+                                       {"Content-Type" "text/plain"}
+                                       :body "custom-error"})
             rate-limit-config {:storage storage
                                :limit limit
                                :response-builder response-builder}
@@ -172,11 +172,10 @@
             first-config {:storage storage
                           :limit first-limit}
             second-limit (->MethodRateLimit #{:get} (t/seconds 1) 1)
-            second-response-builder (fn [counter-state]
-                                      (too-many-requests-response
-                                       counter-state
-                                       "text/plain"
-                                       "custom-error"))
+            second-response-builder (partial too-many-requests-response
+                                             {:headers
+                                              {"Content-Type" "text/plain"}
+                                              :body "custom-error"})
             second-config {:storage storage
                            :limit second-limit
                            :response-builder second-response-builder}

@@ -1,73 +1,42 @@
 (ns congestion.middleware
-  (:require [congestion.limits :as l]
-            [congestion.responses :as r]
-            [congestion.storage :as s]))
-
-(defn- read-counter
-  [storage limit req]
-  (if-let [key (l/get-key limit req)]
-    (let [period (l/get-period limit req)
-          quota (l/get-quota limit req)
-          current-count (s/get-count storage key)
-          remaining-requests (- quota current-count 1)]
-      (if (neg? remaining-requests)
-        {:key key
-         :period period
-         :rate-limit-exhausted? true
-         :remaining-requests 0
-         :retry-after (s/counter-expiry storage key)
-         :quota quota}
-        {:key key
-         :period period
-         :rate-limit-exhausted? false
-         :remaining-requests remaining-requests
-         :quota quota}))))
-
-(defn- increment-counter
-  [storage counter-state]
-  (let [key (:key counter-state)
-        period (:period counter-state)]
-    (s/increment-count storage key period)))
-
-(defn- build-error-response
-  [response-builder counter-state]
-  (if response-builder
-    (response-builder counter-state)
-    (r/too-many-requests-response counter-state)))
+  (:require [congestion.limits :as limits]
+            [congestion.quota-state :as quota-state]
+            [congestion.responses :as responses]))
 
 (defn wrap-stacking-rate-limit
   [handler {:keys [storage limit response-builder]}]
   (fn [req]
-    (let [counter-state (read-counter storage limit req)]
-      (if (:rate-limit-exhausted? counter-state)
-        (build-error-response response-builder counter-state)
+    (let [quota-state (quota-state/read-quota-state storage limit req)]
+      (if (quota-state/quota-exhausted? quota-state)
+        (quota-state/build-error-response quota-state response-builder)
         (let [rsp (handler req)]
-          (if (or (r/rate-limit-applied? rsp)
-                  (nil? counter-state))
+          (if (responses/rate-limit-applied? rsp)
             rsp
             (do
-              (increment-counter storage counter-state)
-              (r/rate-limit-response rsp counter-state))))))))
+              (quota-state/increment-counter quota-state storage)
+              (quota-state/rate-limit-response quota-state rsp))))))))
 
 (defn wrap-rate-limit
   [handler {:keys [storage limit response-builder]}]
   (fn [req]
-    (let [counter-state (read-counter storage limit req)]
-      (if (:rate-limit-exhausted? counter-state)
-        (build-error-response response-builder counter-state)
+    (let [quota-state (quota-state/read-quota-state storage limit req)]
+      (if (quota-state/quota-exhausted? quota-state)
+        (quota-state/build-error-response quota-state response-builder)
         (do
-          (increment-counter storage counter-state)
-          (-> req
+          (quota-state/increment-counter quota-state storage)
+          (->> req
               handler
-              (r/rate-limit-response counter-state)))))))
+              (quota-state/rate-limit-response quota-state)))))))
 
 ;; Expose lib internals as delegates so that the user needs to import
 ;; only one namespace.
 
 (defn ip-rate-limit
   [period quota]
-  (l/->IpRateLimit period quota))
+  (limits/->IpRateLimit period quota))
 
 (defn too-many-requests-response
-  [& args]
-  (apply r/too-many-requests-response args))
+  ([key quota retry-after]
+     (responses/too-many-requests-response key quota retry-after))
+  ([rsp key quota retry-after]
+     (responses/too-many-requests-response rsp key quota retry-after)))

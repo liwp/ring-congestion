@@ -75,7 +75,7 @@
   (testing "with custom 429 reponse"
     (with-counters [[:mock-limit-key 10 #inst "2014-12-31T12:34:56Z"]]
       (let [limit (->MockRateLimit 10 :mock-limit-key :mock-ttl)
-            custom-response-handler (fn [counter-state]
+            custom-response-handler (fn [key quota retry-after]
                                       {:status 418
                                        :headers {"Content-Type" "text/plain"}
                                        :body "I'm a teapot"})
