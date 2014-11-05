@@ -66,5 +66,13 @@
     (reset! state {})))
 
 (defn local-storage
-  []
-  (->LocalStorage (atom {})))
+  "Instantiate a new LocalStorage storage implementation.
+
+  Accepts an optional atom wrapping a map. This allows the same atom
+  to be shared by multiple LocalStorage instances.
+
+  If an argument is not provided, a new atom will be created."
+  [& [backing-atom]]
+  {:pre [(or (nil? backing-atom) (instance? clojure.lang.Atom backing-atom))
+         (or (nil? backing-atom) (map? @backing-atom))]}
+  (->LocalStorage (or backing-atom (atom {}))))
