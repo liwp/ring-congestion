@@ -4,7 +4,6 @@
             [compojure.core :refer :all]
             [congestion.middleware :refer :all]
             [congestion.storage :as s]
-            [congestion.redis-storage :as redis]
             [congestion.test-utils :refer :all]
             [ring.mock.request :as mock]))
 
@@ -23,8 +22,7 @@
   "A collection of functions used to instantiate the various storage
   backends."
   [s/local-storage
-   #(redis/redis-storage {:spec {:host "localhost"
-                                 :port 6379}})])
+   #(s/redis-storage {:spec {:host "localhost" :port 6379}})])
 
 (defn create-storage
   [factory-fn]
@@ -35,7 +33,7 @@
   (testing "wrap-rate-limit"
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit 1 (t/seconds 1))
+            limit (ip-rate-limit :test 1 (t/seconds 1))
             response-builder (fn [& args]
                                (apply too-many-requests-response
                                       {:headers
@@ -68,7 +66,7 @@
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "limit"))
             (is (= (:congestion.responses/rate-limit-applied rsp)
-                   ":congestion.limits/ip-localhost")))
+                   "congestion.limits.IpRateLimit:test-localhost")))
 
           (testing "exhausted quota"
             (let [rsp (app (mock/request :get "/limit"))]
@@ -78,7 +76,7 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.limits/ip-localhost"))))
+                     "congestion.limits.IpRateLimit:test-localhost"))))
 
           (testing "reset quota"
             (Thread/sleep 1000)
@@ -89,13 +87,13 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.limits/ip-localhost")))))))))
+                     "congestion.limits.IpRateLimit:test-localhost")))))))))
 
 (deftest ^:redis test-single-stacked-rate-limit
   (testing "single wrap-stacking-rate-limit instance"
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
-            limit (ip-rate-limit 1 (t/seconds 1))
+            limit (ip-rate-limit :test 1 (t/seconds 1))
             response-builder (partial too-many-requests-response
                                       {:headers
                                        {"Content-Type" "text/plain"}
@@ -126,7 +124,7 @@
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "limit"))
             (is (= (:congestion.responses/rate-limit-applied rsp)
-                   ":congestion.limits/ip-localhost")))
+                   "congestion.limits.IpRateLimit:test-localhost")))
 
           (testing "exhausted quota"
             (let [rsp (app (mock/request :get "/limit"))]
@@ -136,7 +134,7 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.limits/ip-localhost"))))
+                     "congestion.limits.IpRateLimit:test-localhost"))))
 
           (testing "reset quota"
             (Thread/sleep 1000)
@@ -147,7 +145,7 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.limits/ip-localhost")))))))))
+                     "congestion.limits.IpRateLimit:test-localhost")))))))))
 
 (defn wrap-allowed-methods
   "A trivial middleware that returns 405 for those HTTP method that
@@ -168,7 +166,7 @@
   (testing "multiple wrap-stacking-rate-limit instance"
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
-            first-limit (ip-rate-limit 1 (t/seconds 1))
+            first-limit (ip-rate-limit :test 1 (t/seconds 1))
             first-config {:storage storage
                           :limit first-limit}
             second-limit (->MethodRateLimit #{:get} 1 (t/seconds 1))
@@ -240,7 +238,7 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.limits/ip-localhost"))))
+                     "congestion.limits.IpRateLimit:test-localhost"))))
 
           (testing "exhausted quota"
             (let [rsp (app (mock/request :post "/limit"))]
@@ -250,7 +248,7 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.limits/ip-localhost")))
+                     "congestion.limits.IpRateLimit:test-localhost")))
 
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 429))
@@ -259,7 +257,7 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.limits/ip-localhost"))))
+                     "congestion.limits.IpRateLimit:test-localhost"))))
 
           (testing "reset quota"
             (Thread/sleep 1000)
@@ -270,4 +268,4 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.limits/ip-localhost")))))))))
+                     "congestion.limits.IpRateLimit:test-localhost")))))))))
