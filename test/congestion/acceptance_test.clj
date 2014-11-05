@@ -10,14 +10,6 @@
 (def default-response-handler
   (constantly default-response))
 
-(defn custom-response-builder
-  [counter-state]
-  (too-many-requests-response
-   counter-state
-   {:status 418
-    :headers {"Content-Type" "text/plain"}
-    :body "I'm a teapot"}))
-
 (def storage-factory-fns
   "A collection of functions used to instantiate the various storage
   backends."
@@ -52,8 +44,6 @@
         (testing "unlimited route"
           (let [rsp (app (mock/request :get "/no-limit"))]
             (is (= (:status rsp) 200))
-            (is (= (rate-limit rsp) nil))
-            (is (= (remaining rsp) nil))
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "no-limit"))
             (is (nil? (:congestion.responses/rate-limit-applied rsp)))))
@@ -61,8 +51,6 @@
         (testing "rate-limited route"
           (let [rsp (app (mock/request :get "/limit"))]
             (is (= (:status rsp) 200))
-            (is (= (rate-limit rsp) 1))
-            (is (= (remaining rsp) 0))
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "limit"))
             (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -71,8 +59,6 @@
           (testing "exhausted quota"
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 429))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -82,8 +68,6 @@
             (Thread/sleep 1000)
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 200))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -110,8 +94,6 @@
         (testing "unlimited route"
           (let [rsp (app (mock/request :get "/no-limit"))]
             (is (= (:status rsp) 200))
-            (is (= (rate-limit rsp) nil))
-            (is (= (remaining rsp) nil))
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "no-limit"))
             (is (nil? (:congestion.responses/rate-limit-applied rsp)))))
@@ -119,8 +101,6 @@
         (testing "rate-limited route"
           (let [rsp (app (mock/request :get "/limit"))]
             (is (= (:status rsp) 200))
-            (is (= (rate-limit rsp) 1))
-            (is (= (remaining rsp) 0))
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "limit"))
             (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -129,8 +109,6 @@
           (testing "exhausted quota"
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 429))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -140,8 +118,6 @@
             (Thread/sleep 1000)
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 200))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -191,8 +167,6 @@
           (dotimes [_ 3] ;; go over both limits to show we're not limited
             (let [rsp (app (mock/request :get "/no-limit"))]
               (is (= (:status rsp) 200))
-              (is (= (rate-limit rsp) nil))
-              (is (= (remaining rsp) nil))
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "no-limit"))
               (is (nil? (:congestion.responses/rate-limit-applied rsp))))))
@@ -201,8 +175,6 @@
           (testing "applies second limit (HTTP method)"
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 200))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -211,8 +183,6 @@
           (testing "exhausted quota"
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 429))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -222,8 +192,6 @@
             (Thread/sleep 1100)
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 200))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -233,8 +201,6 @@
           (testing "available quota"
             (let [rsp (app (mock/request :post "/limit"))]
               (is (= (:status rsp) 200))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -243,8 +209,6 @@
           (testing "exhausted quota"
             (let [rsp (app (mock/request :post "/limit"))]
               (is (= (:status rsp) 429))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -252,8 +216,6 @@
 
             (let [rsp (app (mock/request :get "/limit"))]
               (is (= (:status rsp) 429))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
@@ -263,8 +225,6 @@
             (Thread/sleep 1000)
             (let [rsp (app (mock/request :post "/limit"))]
               (is (= (:status rsp) 200))
-              (is (= (rate-limit rsp) 1))
-              (is (= (remaining rsp) 0))
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)

@@ -7,14 +7,6 @@
    :headers {"Content-Type" "text/plain"}
    :body "Hello, world!"})
 
-(defn rate-limit [rsp] (some-> rsp
-                               (get-in [:headers "X-RateLimit-Limit"])
-                               Integer.))
-
-(defn remaining [rsp] (some-> rsp
-                              (get-in [:headers "X-RateLimit-Remaining"])
-                              Integer.))
-
 (defn retry-after [rsp] (get-in rsp [:headers "Retry-After"]))
 
 (defrecord MethodRateLimit [methods quota ttl]

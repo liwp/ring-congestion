@@ -3,6 +3,7 @@
             [clojure.test :refer :all]
             [congestion.limits :as l]
             [congestion.middleware :refer :all]
+            [congestion.responses :as r]
             [congestion.storage :as s]
             [congestion.test-utils :refer :all]))
 
@@ -58,8 +59,7 @@
         (is (= (:status rsp) 200))
         (is (= (:body "Hello, world!")))
         (is (= (get-in rsp [:headers "Content-Type"] "text/plain")))
-        (is (= (rate-limit rsp) 10))
-        (is (= (remaining rsp) 9))
+        (is (= (::r/rate-limit-applied rsp) :mock-limit-key))
         (is (= (s/get-count *storage* :mock-limit-key) 1))
         (is (= (s/counter-expiry *storage* :mock-limit-key) :mock-ttl)))))
 
@@ -68,14 +68,13 @@
       (let [limit (->MockRateLimit 10 :mock-limit-key :mock-ttl)
             rsp (make-request wrap-stacking-rate-limit limit)]
         (is (= (:status rsp) 429))
-        (is (= (rate-limit rsp) 10))
-        (is (= (remaining rsp) 0))
+        (is (= (::r/rate-limit-applied rsp) :mock-limit-key))
         (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT")))))
 
   (testing "with custom 429 reponse"
     (with-counters [[:mock-limit-key 10 #inst "2014-12-31T12:34:56Z"]]
       (let [limit (->MockRateLimit 10 :mock-limit-key :mock-ttl)
-            custom-response-handler (fn [key quota retry-after]
+            custom-response-handler (fn [key retry-after]
                                       {:status 418
                                        :headers {"Content-Type" "text/plain"}
                                        :body "I'm a teapot"})
@@ -98,8 +97,7 @@
                                                    :limit second-limit}))]
         (let [rsp (handler :mock-req)]
           (is (= (:status rsp) 200))
-          (is (= (rate-limit rsp) 1000))
-          (is (= (remaining rsp) 999))
+          (is (= (::r/rate-limit-applied rsp) :first-limit-key))
           (is (= (s/get-count *storage* :first-limit-key) 1))
           (is (= (s/counter-expiry *storage* :first-limit-key) :first-ttl))))))
 
@@ -115,9 +113,8 @@
                                                    :limit first-limit}))]
         (let [rsp (handler :mock-req)]
           (is (= (:status rsp) 429))
+          (is (= (::r/rate-limit-applied rsp) :first-limit-key))
           (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT"))
-          (is (= (rate-limit rsp) 1000))
-          (is (= (remaining rsp) 0))
           (is (= (s/get-count *storage* :first-limit-key) 1000))
           (is (= (s/get-count *storage* :second-limit-key) 0))))))
 
@@ -133,8 +130,7 @@
                                                    :limit first-limit}))]
         (let [rsp (handler :mock-req)]
           (is (= (:status rsp) 429))
-          (is (= (rate-limit rsp) 10))
-          (is (= (remaining rsp) 0))
+          (is (= (::r/rate-limit-applied rsp) :second-limit-key))
           (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT"))
           (is (= (s/get-count *storage* :first-limit-key) 0))
           (is (= (s/get-count *storage* :second-limit-key) 10)))))))

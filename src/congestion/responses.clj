@@ -20,12 +20,8 @@
       some?))
 
 (defn rate-limit-response
-  [rsp key remaining-requests quota]
-  (let [headers {"X-RateLimit-Limit" (str quota)
-                 "X-RateLimit-Remaining" (str remaining-requests)}]
-    (-> rsp
-        (update-in [:headers] merge headers)
-        (assoc ::rate-limit-applied key))))
+  [rsp key]
+  (assoc rsp ::rate-limit-applied key))
 
 (defn add-retry-after-header
   [rsp retry-after]
@@ -34,11 +30,11 @@
             (time->str retry-after)))
 
 (defn too-many-requests-response
-  ([key quota retry-after]
-     (too-many-requests-response default-response key quota retry-after))
+  ([key retry-after]
+     (too-many-requests-response default-response key retry-after))
 
-  ([rsp key quota retry-after]
+  ([rsp key retry-after]
      (let [rsp (-> rsp
                    (add-retry-after-header retry-after)
-                   (rate-limit-response key 0 quota))]
+                   (rate-limit-response key))]
        (merge {:status 429} rsp))))

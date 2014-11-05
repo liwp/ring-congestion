@@ -20,7 +20,7 @@
   (rate-limit-response [self rsp]
     rsp))
 
-(defrecord AvailableQuota [key ttl remaining-requests quota]
+(defrecord AvailableQuota [key ttl]
   QuotaState
   (quota-exhausted? [self]
     false)
@@ -29,9 +29,9 @@
   (build-error-response [self response-builder]
     (assert false))
   (rate-limit-response [self rsp]
-    (r/rate-limit-response rsp key remaining-requests quota)))
+    (r/rate-limit-response rsp key)))
 
-(defrecord ExhaustedQuota [key quota retry-after]
+(defrecord ExhaustedQuota [key retry-after]
   QuotaState
   (quota-exhausted? [self]
     true)
@@ -39,8 +39,8 @@
     (assert false))
   (build-error-response [self response-builder]
     (if response-builder
-      (response-builder key quota retry-after)
-      (r/too-many-requests-response key quota retry-after)))
+      (response-builder key retry-after)
+      (r/too-many-requests-response key retry-after)))
   (rate-limit-response [self rsp]
     (assert false)))
 
@@ -58,6 +58,6 @@
           current-count (s/get-count storage key)
           remaining-requests (- quota current-count 1)]
       (if (neg? remaining-requests)
-        (->ExhaustedQuota key quota (s/counter-expiry storage key))
-        (->AvailableQuota key ttl remaining-requests quota)))
+        (->ExhaustedQuota key (s/counter-expiry storage key))
+        (->AvailableQuota key ttl)))
     (->UnlimitedQuota)))
