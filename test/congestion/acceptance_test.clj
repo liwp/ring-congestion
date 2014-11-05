@@ -171,7 +171,7 @@
             first-limit (ip-rate-limit 1 (t/seconds 1))
             first-config {:storage storage
                           :limit first-limit}
-            second-limit (->MethodRateLimit #{:get} (t/seconds 1) 1)
+            second-limit (->MethodRateLimit #{:get} 1 (t/seconds 1))
             second-response-builder (partial too-many-requests-response
                                              {:headers
                                               {"Content-Type" "text/plain"}

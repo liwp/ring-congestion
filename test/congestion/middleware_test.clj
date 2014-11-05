@@ -16,14 +16,14 @@
   (counter-expiry [self key]
     (get @timeouts key)))
 
-(defrecord MockRateLimit [quota key period]
+(defrecord MockRateLimit [quota key ttl]
   l/RateLimit
   (get-quota [self req]
     quota)
   (get-key [self req]
     key)
-  (get-period [self req]
-    period))
+  (get-ttl [self req]
+    ttl))
 
 (def ^:dynamic *storage* nil)
 

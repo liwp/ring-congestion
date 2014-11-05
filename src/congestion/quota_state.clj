@@ -20,12 +20,12 @@
   (rate-limit-response [self rsp]
     rsp))
 
-(defrecord AvailableQuota [key period remaining-requests quota]
+(defrecord AvailableQuota [key ttl remaining-requests quota]
   QuotaState
   (quota-exhausted? [self]
     false)
   (increment-counter [self storage]
-    (s/increment-count storage key period))
+    (s/increment-count storage key ttl))
   (build-error-response [self response-builder]
     (assert false))
   (rate-limit-response [self rsp]
@@ -53,11 +53,11 @@
   the quota state is either exhausted or available."
   [storage limit req]
   (if-let [key (l/get-key limit req)]
-    (let [period (l/get-period limit req)
+    (let [ttl (l/get-ttl limit req)
           quota (l/get-quota limit req)
           current-count (s/get-count storage key)
           remaining-requests (- quota current-count 1)]
       (if (neg? remaining-requests)
         (->ExhaustedQuota key quota (s/counter-expiry storage key))
-        (->AvailableQuota key period remaining-requests quota)))
+        (->AvailableQuota key ttl remaining-requests quota)))
     (->UnlimitedQuota)))

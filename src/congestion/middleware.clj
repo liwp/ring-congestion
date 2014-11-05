@@ -74,8 +74,8 @@
 ;; only one namespace.
 
 (defn ip-rate-limit
-  "Instantiate an IP-based rate-limit where `quota` requests are
-  allowed per IP-address within a timespan of `period`. The `id`
+  "Instantiate an IP-based rate-limit where `quota` number of requests
+  are allowed per IP-address within a timespan of `ttl`. The `id`
   argument is used to differentiate multiple instances of the same
   limit in the storage (eg two IP-based limits on two different routes
   that should have independent counters).
@@ -89,8 +89,8 @@
   request is that off the reverse proxy. See:
   https://devcenter.heroku.com/articles/http-routing for more
   details."
-  [id quota period]
-  (limits/->IpRateLimit id quota period))
+  [id quota ttl]
+  (limits/->IpRateLimit id quota ttl))
 
 (defn too-many-requests-response
   "Generate a 429 (Too many requests) ring response.

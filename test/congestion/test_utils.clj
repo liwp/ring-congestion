@@ -17,7 +17,7 @@
 
 (defn retry-after [rsp] (get-in rsp [:headers "Retry-After"]))
 
-(defrecord MethodRateLimit [methods period quota]
+(defrecord MethodRateLimit [methods quota ttl]
   l/RateLimit
   (get-quota [self req]
     quota)
@@ -25,5 +25,5 @@
     (let [req-method (:request-method req)]
       (if (contains? methods req-method)
         (str ::method "-" (-> req :request-method name)))))
-  (get-period [self req]
-    period))
+  (get-ttl [self req]
+    ttl))

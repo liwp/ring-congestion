@@ -10,4 +10,4 @@
       (is (= (get-quota limit req) 100))
       (is (= (get-key limit req)
              "congestion.limits.IpRateLimit:test-127.0.0.1"))
-      (is (= (get-period limit req) (t/seconds 10))))))
+      (is (= (get-ttl limit req) (t/seconds 10))))))
