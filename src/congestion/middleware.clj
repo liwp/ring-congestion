@@ -75,10 +75,13 @@
 
 (defn ip-rate-limit
   "Instantiate an IP-based rate-limit where `quota` requests are
-  allowed per IP-address within a timespan of `period`.
+  allowed per IP-address within a timespan of `period`. The `id`
+  argument is used to differentiate multiple instances of the same
+  limit in the storage (eg two IP-based limits on two different routes
+  that should have independent counters).
 
-  Eg. (ip-rate-limit 1000 (t/hours 1)) allows 1000 requests per hour
-  per IP-address.
+  Eg. (ip-rate-limit :my-limit 1000 (t/hours 1)) allows 1000 requests
+  per hour per IP-address.
 
   Note: make sure that the incoming ring request has the
   correct :remote-addr field. Eg Heroku uses a reverse proxy infront
@@ -86,8 +89,8 @@
   request is that off the reverse proxy. See:
   https://devcenter.heroku.com/articles/http-routing for more
   details."
-  [quota period]
-  (limits/->IpRateLimit quota period))
+  [id quota period]
+  (limits/->IpRateLimit id quota period))
 
 (defn too-many-requests-response
   "Generate a 429 (Too many requests) ring response.
