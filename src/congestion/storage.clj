@@ -62,7 +62,9 @@
     nil)
 
   (counter-expiry [self key]
-    (get-in @state [:timeouts key]))
+    (if-let [timeout (get-in @state [:timeouts key])]
+      timeout
+      (t/now)))
 
   (clear-counters [self]
     (reset! state {})))
@@ -112,12 +114,12 @@
        (car/eval* ttl-incr-script 1 redis-key ttl-in-secs))))
 
   (counter-expiry [self key]
-    (let [redis-key (generate-redis-key key)
+    (let [now (t/now)
+          redis-key (generate-redis-key key)
           ttl (car/wcar conn-opts (car/ttl redis-key))]
       (if (neg? ttl)
-        ;; TODO: we should return `now` - ie Retry-After: now
-        :expired
-        (t/plus (t/now) (t/seconds ttl)))))
+        now
+        (t/plus now (t/seconds ttl)))))
 
   (clear-counters [self]
     (let [redis-key (generate-redis-key "*")]

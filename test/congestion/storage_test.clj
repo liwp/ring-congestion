@@ -4,7 +4,7 @@
             [congestion.storage :refer :all]))
 
 ;; LocalStorage tests
-(deftest ^:unit test-increments-counters
+(deftest ^:unit test-local-storage-increments-counters
   (let [storage (local-storage)]
     (doseq [k [:increments-counters-b
                :increments-counters-a
@@ -19,7 +19,7 @@
     (is (= (get-count storage :increments-counters-c) 1))
     (is (= (get-count storage :increments-counters-d) 0))))
 
-(deftest ^:unit test-clears-counters
+(deftest ^:unit test-local-storage-clears-counters
   (let [storage (local-storage)]
     (increment-count storage :clears-counters-a (t/seconds 10))
     (increment-count storage :clears-counters-b (t/minutes 10))
@@ -28,7 +28,7 @@
     (is (= (get-count storage :clears-counters-a) 0))
     (is (= (get-count storage :clears-counters-b) 0))))
 
-(deftest ^:unit test-expires-counters
+(deftest ^:unit test-local-storage-expires-counters
   (let [storage (local-storage)]
     (increment-count storage :expiring-counters-a (t/millis 100))
     (increment-count storage :expiring-counters-b (t/minutes 10))
@@ -38,19 +38,22 @@
     (is (= (get-count storage :expiring-counters-a) 0))
     (is (= (get-count storage :expiring-counters-b) 1))))
 
-(deftest ^:unit test-returns-expiration-time
+(deftest ^:unit test-local-storage-returns-expiration-time
   (let [storage (local-storage)]
     (let [now (t/now)]
       (with-redefs [t/now (fn [] now)]
         (increment-count storage :expiration-time-a (t/seconds 10))
-        (increment-count storage :expiration-time-b (t/minutes 10)))
+        (increment-count storage :expiration-time-b (t/minutes 10))
 
-      (is (= (counter-expiry storage :expiration-time-a)
-             (t/plus now (t/seconds 10))))
-      (is (= (counter-expiry storage :expiration-time-b)
-             (t/plus now (t/minutes 10)))))))
+        (is (= (counter-expiry storage :expiration-time-a)
+               (t/plus now (t/seconds 10))))
+        (is (= (counter-expiry storage :expiration-time-b)
+               (t/plus now (t/minutes 10))))
 
-(deftest ^:unit teset-local-storage-independent-atoms
+        ;; An expired key is the same as a non-existent key
+        (is (= (counter-expiry storage :expired-key) now))))))
+
+(deftest ^:unit test-local-storage-independent-atoms
   (testing "with separate atoms"
     (let [storage-a (local-storage)
           storage-b (local-storage)]
@@ -113,9 +116,12 @@
     (let [now (t/now)]
       (with-redefs [t/now (fn [] now)]
         (increment-count *storage* :expiration-time-a (t/seconds 10))
-        (increment-count *storage* :expiration-time-b (t/minutes 10)))
+        (increment-count *storage* :expiration-time-b (t/minutes 10))
 
-      (is (t/after? (counter-expiry *storage* :expiration-time-a)
-                    (t/plus now (t/seconds 10))))
-      (is (t/after? (counter-expiry *storage* :expiration-time-b)
-                    (t/plus now (t/minutes 10)))))))
+        (is (not (t/before? (counter-expiry *storage* :expiration-time-a)
+                            (t/plus now (t/seconds 10)))))
+        (is (not (t/before? (counter-expiry *storage* :expiration-time-b)
+                            (t/plus now (t/minutes 10)))))
+
+        ;; An expired key is the same as a non-existent key
+        (is (= (counter-expiry *storage* :expired-key) now))))))
