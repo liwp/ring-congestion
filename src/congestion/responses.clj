@@ -20,8 +20,8 @@
       some?))
 
 (defn rate-limit-response
-  [rsp key]
-  (assoc rsp ::rate-limit-applied key))
+  [rsp quota-state]
+  (assoc rsp ::rate-limit-applied quota-state))
 
 (defn add-retry-after-header
   [rsp retry-after]

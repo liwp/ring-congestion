@@ -59,7 +59,9 @@
         (is (= (:status rsp) 200))
         (is (= (:body "Hello, world!")))
         (is (= (get-in rsp [:headers "Content-Type"] "text/plain")))
-        (is (= (::r/rate-limit-applied rsp) :mock-limit-key))
+        (is (= (::r/rate-limit-applied rsp) {:key :mock-limit-key
+                                             :quota 10
+                                             :remaining 9}))
         (is (= (s/get-count *storage* :mock-limit-key) 1))
         (is (= (s/counter-expiry *storage* :mock-limit-key) :mock-ttl)))))
 
@@ -68,7 +70,9 @@
       (let [limit (->MockRateLimit 10 :mock-limit-key :mock-ttl)
             rsp (make-request wrap-stacking-rate-limit limit)]
         (is (= (:status rsp) 429))
-        (is (= (::r/rate-limit-applied rsp) :mock-limit-key))
+        (is (= (::r/rate-limit-applied rsp) {:key :mock-limit-key
+                                             :quota 10
+                                             :remaining 0}))
         (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT")))))
 
   (testing "with custom 429 reponse"
@@ -83,7 +87,9 @@
         (is (= (:status rsp) 418))
         (is (= (get-in rsp [:headers "Content-Type"]) "text/plain"))
         (is (= (:body rsp) "I'm a teapot"))
-        (is (= (::r/rate-limit-applied rsp) :mock-limit-key))))))
+        (is (= (::r/rate-limit-applied rsp) {:key :mock-limit-key
+                                             :quota 10
+                                             :remaining 0}))))))
 
 (deftest ^:unit test-multiple-wrap-stacking-rate-limit-instances
   (testing "with second limit applied"
@@ -98,7 +104,9 @@
                                                    :limit second-limit}))]
         (let [rsp (handler :mock-req)]
           (is (= (:status rsp) 200))
-          (is (= (::r/rate-limit-applied rsp) :first-limit-key))
+          (is (= (::r/rate-limit-applied rsp) {:key :first-limit-key
+                                               :quota 1000
+                                               :remaining 999}))
           (is (= (s/get-count *storage* :first-limit-key) 1))
           (is (= (s/counter-expiry *storage* :first-limit-key) :first-ttl))))))
 
@@ -114,7 +122,9 @@
                                                    :limit first-limit}))]
         (let [rsp (handler :mock-req)]
           (is (= (:status rsp) 429))
-          (is (= (::r/rate-limit-applied rsp) :first-limit-key))
+          (is (= (::r/rate-limit-applied rsp) {:key :first-limit-key
+                                               :quota 1000
+                                               :remaining 0}))
           (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT"))
           (is (= (s/get-count *storage* :first-limit-key) 1000))
           (is (= (s/get-count *storage* :second-limit-key) 0))))))
@@ -131,7 +141,9 @@
                                                    :limit first-limit}))]
         (let [rsp (handler :mock-req)]
           (is (= (:status rsp) 429))
-          (is (= (::r/rate-limit-applied rsp) :second-limit-key))
+          (is (= (::r/rate-limit-applied rsp) {:key :second-limit-key
+                                               :quota 10
+                                               :remaining 0}))
           (is (= (retry-after rsp) "Wed, 31 Dec 2014 12:34:56 GMT"))
           (is (= (s/get-count *storage* :first-limit-key) 0))
           (is (= (s/get-count *storage* :second-limit-key) 10)))))))

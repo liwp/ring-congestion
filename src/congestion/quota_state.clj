@@ -35,7 +35,7 @@
     (assert false))
 
   (rate-limit-response [self rsp]
-    (r/rate-limit-response rsp key)))
+    (r/rate-limit-response rsp {:key key :quota quota :remaining remaining})))
 
 (defrecord ExhaustedQuota [key retry-after quota]
   QuotaState
@@ -49,7 +49,7 @@
     (let [rsp (if response-builder
                 (response-builder key retry-after)
                 (r/too-many-requests-response key retry-after))]
-      (r/rate-limit-response rsp key)))
+      (r/rate-limit-response rsp {:key key :quota quota :remaining 0})))
 
   (rate-limit-response [self rsp]
     (assert false)))

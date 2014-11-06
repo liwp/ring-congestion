@@ -54,7 +54,9 @@
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "limit"))
             (is (= (:congestion.responses/rate-limit-applied rsp)
-                   "congestion.limits.IpRateLimit:test-localhost")))
+                   {:key "congestion.limits.IpRateLimit:test-localhost"
+                    :quota 1
+                    :remaining 0})))
 
           (testing "exhausted quota"
             (let [rsp (app (mock/request :get "/limit"))]
@@ -62,7 +64,9 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     "congestion.limits.IpRateLimit:test-localhost"))))
+                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                      :quota 1
+                      :remaining 0}))))
 
           (testing "reset quota"
             (Thread/sleep 1000)
@@ -71,7 +75,9 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     "congestion.limits.IpRateLimit:test-localhost")))))))))
+                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                      :quota 1
+                      :remaining 0})))))))))
 
 (deftest ^:redis test-single-stacked-rate-limit
   (testing "single wrap-stacking-rate-limit instance"
@@ -104,7 +110,9 @@
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "limit"))
             (is (= (:congestion.responses/rate-limit-applied rsp)
-                   "congestion.limits.IpRateLimit:test-localhost")))
+                   {:key "congestion.limits.IpRateLimit:test-localhost"
+                    :quota 1
+                    :remaining 0})))
 
           (testing "exhausted quota"
             (let [rsp (app (mock/request :get "/limit"))]
@@ -112,7 +120,9 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     "congestion.limits.IpRateLimit:test-localhost"))))
+                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                      :quota 1
+                      :remaining 0}))))
 
           (testing "reset quota"
             (Thread/sleep 1000)
@@ -121,7 +131,9 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     "congestion.limits.IpRateLimit:test-localhost")))))))))
+                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                      :quota 1
+                      :remaining 0})))))))))
 
 (defn wrap-allowed-methods
   "A trivial middleware that returns 405 for those HTTP method that
@@ -178,7 +190,9 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.test-utils/method-get"))))
+                     {:key ":congestion.test-utils/method-get"
+                      :quota 1
+                      :remaining 0}))))
 
           (testing "exhausted quota"
             (let [rsp (app (mock/request :get "/limit"))]
@@ -186,7 +200,9 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.test-utils/method-get"))))
+                     {:key ":congestion.test-utils/method-get"
+                      :quota 1
+                      :remaining 0}))))
 
           (testing "reset quota"
             (Thread/sleep 1100)
@@ -195,7 +211,9 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     ":congestion.test-utils/method-get")))))
+                     {:key ":congestion.test-utils/method-get"
+                      :quota 1
+                      :remaining 0})))))
 
         (testing "route limited by first limit (IP)"
           (testing "available quota"
@@ -204,7 +222,9 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     "congestion.limits.IpRateLimit:test-localhost"))))
+                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                      :quota 1
+                      :remaining 0}))))
 
           (testing "exhausted quota"
             (let [rsp (app (mock/request :post "/limit"))]
@@ -212,14 +232,9 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     "congestion.limits.IpRateLimit:test-localhost")))
-
-            (let [rsp (app (mock/request :get "/limit"))]
-              (is (= (:status rsp) 429))
-              (is (some? (retry-after rsp)))
-              (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
-              (is (= (:congestion.responses/rate-limit-applied rsp)
-                     "congestion.limits.IpRateLimit:test-localhost"))))
+                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                      :quota 1
+                      :remaining 0}))))
 
           (testing "reset quota"
             (Thread/sleep 1000)
@@ -228,4 +243,6 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     "congestion.limits.IpRateLimit:test-localhost")))))))))
+                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                      :quota 1
+                      :remaining 0})))))))))
