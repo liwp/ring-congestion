@@ -34,7 +34,5 @@
      (too-many-requests-response default-response key retry-after))
 
   ([rsp key retry-after]
-     (let [rsp (-> rsp
-                   (add-retry-after-header retry-after)
-                   (rate-limit-response key))]
+     (let [rsp (add-retry-after-header rsp retry-after)]
        (merge {:status 429} rsp))))

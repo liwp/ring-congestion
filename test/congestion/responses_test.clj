@@ -37,7 +37,6 @@
       (let [retry-after (c/from-date #inst "2014-12-31T12:34:56Z")
             rsp (r/too-many-requests-response "limit-key" retry-after)
             headers (:headers rsp)]
-        (is (= (::r/rate-limit-applied rsp) "limit-key"))
         (is (= (:status rsp) 429))
         (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
         (is (= (headers "Content-Type") "application/json"))
@@ -51,7 +50,6 @@
             rsp (r/too-many-requests-response custom-rsp "limit-key"
                                               retry-after)
             headers (:headers rsp)]
-        (is (= (::r/rate-limit-applied rsp) "limit-key"))
         (is (= (:status rsp) 418))
         (is (= (:body rsp) "Hello, World!"))
         (is (= (headers "Content-Type") "text/plain"))

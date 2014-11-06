@@ -107,12 +107,6 @@
   ([rsp key retry-after]
      (responses/too-many-requests-response rsp key retry-after)))
 
-(defn rate-limit-response
-  "Mark a response as having had a rate limit applied to it. This will
-  result in other stacked rate limits being short-circuited."
-  [rsp key]
-  (responses/rate-limit-response rsp key))
-
 (defn add-retry-after-header
   "Add a Retry-After header to the provided response. The
   `retry-after` argument is expected to be a clj-time/Joda DateTime."

@@ -80,9 +80,10 @@
                                        :body "I'm a teapot"})
             rsp (make-request wrap-stacking-rate-limit
                               limit custom-response-handler)]
-        (is (= rsp {:status 418
-                    :headers {"Content-Type" "text/plain"}
-                    :body "I'm a teapot"}))))))
+        (is (= (:status rsp) 418))
+        (is (= (get-in rsp [:headers "Content-Type"]) "text/plain"))
+        (is (= (:body rsp) "I'm a teapot"))
+        (is (= (::r/rate-limit-applied rsp) :mock-limit-key))))))
 
 (deftest ^:unit test-multiple-wrap-stacking-rate-limit-instances
   (testing "with second limit applied"
