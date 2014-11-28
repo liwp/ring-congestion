@@ -5,13 +5,8 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :scm {:name "git"
         :url "https://github.com/listora/again"}
-  ;;:deploy-repositories [["releases" :clojars]]
-  :repositories {"releases" {:url "s3p://eindx-maven/releases/"
-                             :username [:gpg :env/aws_access_key_id]
-                             :passphrase [:gpg :env/aws_secret_access_key]}
-                 "snapshots" {:url "s3p://eindx-maven/snapshots/"
-                              :username [:gpg :env/aws_access_key_id]
-                              :passphrase [:gpg :env/aws_secret_access_key]}}
+  :deploy-repositories [["releases" :clojars]]
+
   :dependencies [[clj-time "0.8.0" :exclusions [org.clojure/clojure]]
                  [com.taoensso/carmine "2.7.1" :exclusions [org.clojure/clojure]]
                  [org.clojure/clojure "1.6.0"]]
@@ -20,8 +15,7 @@
                                   [ring-mock "0.1.5"]]
 
                    :plugins [[jonase/eastwood "0.1.5"]
-                             [listora/whitespace-linter "0.1.0"]
-                             [s3-wagon-private "1.1.2"]]
+                             [listora/whitespace-linter "0.1.0"]]
 
                    :eastwood {:exclude-linters [:deprecations :unused-ret-vals]}
 
