@@ -47,8 +47,8 @@
 
   (build-error-response [self response-builder]
     (let [rsp (if response-builder
-                (response-builder key retry-after)
-                (r/too-many-requests-response key retry-after))]
+                (response-builder quota retry-after)
+                (r/too-many-requests-response retry-after))]
       (r/rate-limit-response rsp {:key key :quota quota :remaining 0})))
 
   (rate-limit-response [self rsp]

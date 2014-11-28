@@ -30,9 +30,9 @@
             (time->str retry-after)))
 
 (defn too-many-requests-response
-  ([key retry-after]
-     (too-many-requests-response default-response key retry-after))
+  ([retry-after]
+     (too-many-requests-response default-response retry-after))
 
-  ([rsp key retry-after]
+  ([rsp retry-after]
      (let [rsp (add-retry-after-header rsp retry-after)]
        (merge {:status 429} rsp))))

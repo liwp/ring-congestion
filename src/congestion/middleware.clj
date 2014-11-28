@@ -16,13 +16,11 @@
   the semantics of the limit that is being applied to `handler`.
 
   An optional :response-builder can be provided to override the
-  default 429 response. The builder must be a (fn [limit-key quota
-  retry-after] ...) function where `limit-key` is the key used to
-  identify the counter in storage, `quota` is the number of requests
-  allowed by the limit, and `retry-after` is a clj-time/Joda DateTime
-  specifying when the rate-limit will be reset. The
-  too-many-requests-response fn can be used as a helper in forming a
-  proper 429 response."
+  default 429 response. The builder must be a (fn [quota retry-after]
+  ...) function where `quota` is the number of requests allowed by the
+  limit and `retry-after` is a clj-time/Joda DateTime specifying when
+  the rate-limit will be reset. The too-many-requests-response fn can
+  be used as a helper in forming a proper 429 response."
   [handler {:keys [storage limit response-builder]}]
   (fn [req]
     (let [quota-state (quota-state/read-quota-state storage limit req)]

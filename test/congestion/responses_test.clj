@@ -35,7 +35,7 @@
   (testing "too-many-requests-response"
     (testing "with default response"
       (let [retry-after (c/from-date #inst "2014-12-31T12:34:56Z")
-            rsp (r/too-many-requests-response "limit-key" retry-after)
+            rsp (r/too-many-requests-response retry-after)
             headers (:headers rsp)]
         (is (= (:status rsp) 429))
         (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
@@ -47,8 +47,7 @@
                         :body "Hello, World!"
                         :status 418}
             retry-after (c/from-date #inst "2014-12-31T12:34:56Z")
-            rsp (r/too-many-requests-response custom-rsp "limit-key"
-                                              retry-after)
+            rsp (r/too-many-requests-response custom-rsp retry-after)
             headers (:headers rsp)]
         (is (= (:status rsp) 418))
         (is (= (:body rsp) "Hello, World!"))
