@@ -120,7 +120,7 @@ perform `100 req/h` rather than the intended `5000 req/h`.
 (defrecord UserRateLimit [id quota ttl]
   RateLimit
   (get-key [self req]
-    (str (.getName (type self)) id "-" (:user-name req)))
+    (str (.getName (class self)) id "-" (:user-name req)))
 
   (get-quota [self req]
     quota)
@@ -253,7 +253,7 @@ The `IpRateLimit` is an example of a simple static limit:
 (defrecord IpRateLimit [id quota ttl]
   RateLimit
   (get-key [self req]
-    (str (.getName (type self)) id "-" (:remote-addr req)))
+    (str (.getName (class self)) id "-" (:remote-addr req)))
 
   (get-quota [self req]
     quota)
@@ -286,7 +286,7 @@ middleware, and then simply look them up from the request in
 (defrecord UserRateLimit [id quota ttl]
   RateLimit
   (get-key [self req]
-    (str (.getName (type self)) id "-" (:user-name req)))
+    (str (.getName (class self)) id "-" (:user-name req)))
 
   (get-quota [self req]
     (:user-rate-limit-quota req))

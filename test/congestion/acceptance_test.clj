@@ -26,12 +26,12 @@
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
             limit (ip-rate-limit :test 1 (t/seconds 1))
-            response-builder (fn [& args]
-                               (apply too-many-requests-response
-                                      {:headers
-                                       {"Content-Type" "text/plain"}
-                                       :body "custom-error"}
-                                      args))
+            response-builder (fn [quote retry-after]
+                               (too-many-requests-response
+                                {:headers
+                                 {"Content-Type" "text/plain"}
+                                 :body "custom-error"}
+                                retry-after))
             rate-limit-config {:storage storage
                                :limit limit
                                :response-builder response-builder}
@@ -54,7 +54,7 @@
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "limit"))
             (is (= (:congestion.responses/rate-limit-applied rsp)
-                   {:key "congestion.limits.IpRateLimit:test-localhost"
+                   {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                     :quota 1
                     :remaining 0})))
 
@@ -64,7 +64,7 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                     {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                       :quota 1
                       :remaining 0}))))
 
@@ -75,7 +75,7 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                     {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                       :quota 1
                       :remaining 0})))))))))
 
@@ -84,10 +84,12 @@
     (doseq [storage-factory-fn storage-factory-fns]
       (let [storage (create-storage storage-factory-fn)
             limit (ip-rate-limit :test 1 (t/seconds 1))
-            response-builder (partial too-many-requests-response
-                                      {:headers
-                                       {"Content-Type" "text/plain"}
-                                       :body "custom-error"})
+            response-builder (fn [quota retry-after]
+                               (too-many-requests-response
+                                {:headers
+                                 {"Content-Type" "text/plain"}
+                                 :body "custom-error"}
+                                retry-after))
             rate-limit-config {:storage storage
                                :limit limit
                                :response-builder response-builder}
@@ -110,7 +112,7 @@
             (is (nil? (retry-after rsp)))
             (is (= (:body rsp) "limit"))
             (is (= (:congestion.responses/rate-limit-applied rsp)
-                   {:key "congestion.limits.IpRateLimit:test-localhost"
+                   {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                     :quota 1
                     :remaining 0})))
 
@@ -120,7 +122,7 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "custom-error"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                     {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                       :quota 1
                       :remaining 0}))))
 
@@ -131,7 +133,7 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                     {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                       :quota 1
                       :remaining 0})))))))))
 
@@ -158,10 +160,12 @@
             first-config {:storage storage
                           :limit first-limit}
             second-limit (->MethodRateLimit #{:get} 1 (t/seconds 1))
-            second-response-builder (partial too-many-requests-response
-                                             {:headers
-                                              {"Content-Type" "text/plain"}
-                                              :body "custom-error"})
+            second-response-builder (fn [quota retry-after]
+                                      (too-many-requests-response
+                                       {:headers
+                                        {"Content-Type" "text/plain"}
+                                        :body "custom-error"}
+                                       retry-after))
             second-config {:storage storage
                            :limit second-limit
                            :response-builder second-response-builder}
@@ -222,7 +226,7 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                     {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                       :quota 1
                       :remaining 0}))))
 
@@ -232,7 +236,7 @@
               (is (some? (retry-after rsp)))
               (is (= (:body rsp) "{\"error\": \"Too Many Requests\"}"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                     {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                       :quota 1
                       :remaining 0}))))
 
@@ -243,6 +247,6 @@
               (is (nil? (retry-after rsp)))
               (is (= (:body rsp) "limit"))
               (is (= (:congestion.responses/rate-limit-applied rsp)
-                     {:key "congestion.limits.IpRateLimit:test-localhost"
+                     {:key "congestion.limits.IpRateLimit:test-127.0.0.1"
                       :quota 1
                       :remaining 0})))))))))

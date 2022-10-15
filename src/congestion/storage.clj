@@ -103,12 +103,12 @@
       (if-let [counter (car/wcar
                         conn-opts
                         (car/get redis-key))]
-        (Integer. counter)
+        (Integer/parseInt counter)
         0)))
 
   (increment-count [self key ttl]
     (let [redis-key (generate-redis-key key)
-          ttl-in-secs (-> ttl .toStandardDuration .getStandardSeconds)]
+          ttl-in-secs (t/in-seconds ttl)]
       (car/wcar
        conn-opts
        (car/eval* ttl-incr-script 1 redis-key ttl-in-secs))))
